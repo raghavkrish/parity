@@ -1,5 +1,5 @@
-export type TextBlock = { text: string };
-export type LinkItem = { text: string; href: string };
+export type TextBlock = { text: string; where?: string };
+export type LinkItem = { text: string; href: string; where?: string };
 export type ImageItem = {
   alt: string;
   hash: string | null;
@@ -41,6 +41,8 @@ export type Mismatch = {
   index?: number;
   oldValue?: string;
   newValue?: string;
+  oldWhere?: string;
+  newWhere?: string;
   detail?: string;
 };
 

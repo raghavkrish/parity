@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { diffLayouts, diffModels } from "../src/diff.js";
 import { layoutBoxesEqual, summarizeLayoutBox } from "../src/layout.js";
-import { consumeToMatch, flattenTexts, normalizeHref, normalizeText } from "../src/normalize.js";
+import {
+  compareText,
+  consumeToMatch,
+  flattenTexts,
+  normalizeHref,
+  normalizeText,
+} from "../src/normalize.js";
 import type { ContentModel, LayoutBox } from "../src/types.js";
 
 describe("normalizeText", () => {
   it("collapses whitespace", () => {
     expect(normalizeText("  Hello\n  world\t")).toBe("Hello world");
+  });
+});
+
+describe("compareText", () => {
+  it("strips the AED currency token", () => {
+    expect(compareText("less than AED 5M")).toBe("less than 5M");
+    expect(compareText("Under AED 250m")).toBe("Under 250m");
   });
 });
 
@@ -79,20 +92,25 @@ describe("diffModels", () => {
     ]);
   });
 
-  it("flags image_changed when hash differs", () => {
+  it("ignores image hash, alt, error, and extras", () => {
     const next: ContentModel = {
       ...base,
-      images: [{ alt: "hero", hash: "bbb", src: "http://x/b.png" }],
+      images: [
+        { alt: "hero", hash: "bbb", src: "http://x/b.png" },
+        { alt: "extra", hash: null, src: "http://x/c.png", error: "HTTP 404" },
+      ],
     };
-    expect(diffModels(base, next)[0].kind).toBe("image_changed");
+    expect(diffModels(base, next).filter((m) => m.kind.startsWith("image_"))).toEqual([]);
   });
 
-  it("flags image_error when hash is null", () => {
+  it("flags image_missing when the new page dropped an image", () => {
     const next: ContentModel = {
       ...base,
-      images: [{ alt: "hero", hash: null, src: "http://x/b.png", error: "HTTP 404" }],
+      images: [],
     };
-    expect(diffModels(base, next)[0].kind).toBe("image_error");
+    expect(diffModels(base, next)).toEqual([
+      expect.objectContaining({ kind: "image_missing", oldValue: expect.stringContaining("hero") }),
+    ]);
   });
 
   it("returns empty when equal", () => {
@@ -167,6 +185,108 @@ describe("diffModels", () => {
     expect(text.some((m) => String(m.oldValue ?? m.newValue).includes("Account Services"))).toBe(
       false,
     );
+  });
+
+  it("treats AED 5M and 5M as the same copy", () => {
+    const oldModel: ContentModel = {
+      texts: [{ text: "Designed specifically for entrepreneurs with annual turnover less than AED 5M" }],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [{ text: "Designed specifically for entrepreneurs with annual turnover less than 5M" }],
+      links: [],
+      images: [],
+    };
+    expect(diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"))).toEqual([]);
+  });
+
+  it("joins a split Under 250m heading after dropping AED", () => {
+    const oldModel: ContentModel = {
+      texts: [{ text: "For companies with turnover Under AED 250m" }, { text: "Business First" }],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "For companies with turnover" },
+        { text: "Under 250m" },
+        { text: "Business First" },
+      ],
+      links: [],
+      images: [],
+    };
+    expect(diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"))).toEqual([]);
+  });
+
+  it("ignores a trailing new-only CTA after the old page is consumed", () => {
+    const oldModel: ContentModel = {
+      texts: [{ text: "Business First" }, { text: "Whether you are starting up" }],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "Business First" },
+        { text: "Whether you are starting up" },
+        { text: "Apply for Trade Finance Solutions" },
+        { text: "Tailored solutions designed to support your business." },
+      ],
+      links: [],
+      images: [],
+    };
+    expect(diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"))).toEqual([]);
+  });
+
+  it("still flags an extra card before the last shared card and keeps Where", () => {
+    const oldModel: ContentModel = {
+      texts: [
+        { text: "Call Accounts", where: "Call Accounts" },
+        { text: "Fixed Deposits", where: "Fixed Deposits" },
+      ],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "Call Accounts", where: "Call Accounts" },
+        { text: "Bonus Card", where: "Bonus Card" },
+        { text: "Fixed Deposits", where: "Fixed Deposits" },
+      ],
+      links: [],
+      images: [],
+    };
+    const text = diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"));
+    expect(text).toEqual([
+      expect.objectContaining({ kind: "text_extra", newValue: "Bonus Card", newWhere: "Bonus Card" }),
+    ]);
+  });
+
+  it("resyncs after a split heading so later cards still match", () => {
+    const oldModel: ContentModel = {
+      texts: [
+        { text: "For companies with turnover Under AED 250m" },
+        { text: "Business First" },
+        { text: "Whether you are starting up or growing your business" },
+      ],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "For companies with turnover" },
+        { text: "Under 250m" },
+        { text: "Business First" },
+        { text: "Whether you are starting up or growing your business" },
+      ],
+      links: [],
+      images: [],
+    };
+    const text = diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"));
+    expect(text.some((m) => m.oldValue === "Business First" || m.newValue === "Business First")).toBe(
+      false,
+    );
+    expect(text.some((m) => String(m.newValue).includes("Whether you are starting"))).toBe(false);
   });
 });
 

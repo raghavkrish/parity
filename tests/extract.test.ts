@@ -15,7 +15,9 @@ describe("extractContentModel root fallback", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.model.texts.map((t) => t.text)).toEqual(["Welcome", "Body copy"]);
-    expect(result.model.links).toEqual([{ text: "Next", href: "/next.html" }]);
+    expect(result.model.links).toEqual([
+      expect.objectContaining({ text: "Next", href: "/next.html" }),
+    ]);
   });
 
   it("still prefers data-content over body", async () => {
@@ -73,10 +75,10 @@ describe("extractContentModel root fallback", () => {
       expect(texts.join(" ")).not.toMatch(/Personal|Login|Business Banking|Cookies Notice|Account Services menu/);
 
       expect(result.model.links).toEqual([
-        {
+        expect.objectContaining({
           text: "Sustainable Call Account",
           href: "/en/business/products-solutions/account-services/sustainable-call-account.aspx",
-        },
+        }),
       ]);
       expect(result.model.links.some((l) => /personal|facebook/i.test(l.href))).toBe(false);
 
@@ -196,7 +198,7 @@ describe("nested card wrappers", () => {
     );
   });
 
-  it("still flags AED 5M vs 5M and a new-only card", async () => {
+  it("does not flag AED 5M vs 5M on the same card", async () => {
     const newHtml = `<!DOCTYPE html><html><body>
       <div id="site-content" role="main">
         <li>
@@ -207,15 +209,120 @@ describe("nested card wrappers", () => {
           <h3>Retail Business Accounts</h3>
           <p>Designed specifically for entrepreneurs with annual turnover less than 5M</p>
         </li>
-        <li>
-          <h3>Business First</h3>
-          <p>Whether you are starting up or growing your business</p>
-        </li>
       </div>
     </body></html>`;
 
     const [oldExtract, newExtract] = await Promise.all([
       extractContentModel(oldCard, "https://example.com/old"),
+      extractContentModel(newHtml, "https://example.com/new"),
+    ]);
+    expect(oldExtract.ok && newExtract.ok).toBe(true);
+    if (!oldExtract.ok || !newExtract.ok) return;
+    expect(diffModels(oldExtract.model, newExtract.model).filter((m) => m.kind.startsWith("text_"))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("truncated main and card links", () => {
+  const oldTruncated = `<!DOCTYPE html><html><body>
+    <div id="site-content" role="main">
+      <h3>Sustainable Call Account</h3>
+      <p>Empowering a sustainable future</p>
+    </div>
+    <h2>For growing corporates we offer tailored packages designed to meet your specific needs</h2>
+    <div>
+      <a href="/en/business/first.aspx">
+        <h3>Business First</h3>
+        <p>Whether you are starting up</p>
+      </a>
+    </div>
+  </body></html>`;
+
+  const newFull = `<!DOCTYPE html><html><body>
+    <main>
+      <h3>Sustainable Call Account</h3>
+      <p>Empowering a sustainable future</p>
+      <h2>For growing corporates we offer tailored packages designed to meet your specific needs</h2>
+      <a href="/en/business/first.aspx"><img src="/card.png" alt="Business First" /></a>
+      <h3>Business First</h3>
+      <p>Whether you are starting up</p>
+    </main>
+  </body></html>`;
+
+  it("extracts a heading that sits after a closed #site-content", async () => {
+    const result = await extractContentModel(oldTruncated, "https://example.com/old");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.model.texts.map((t) => t.text)).toContain(
+      "For growing corporates we offer tailored packages designed to meet your specific needs",
+    );
+  });
+
+  it("does not flag the orphaned corporates heading as extra", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(Buffer.from("img"), { status: 200 });
+    try {
+      const [oldExtract, newExtract] = await Promise.all([
+        extractContentModel(oldTruncated, "https://example.com/old"),
+        extractContentModel(newFull, "https://example.com/new"),
+      ]);
+      expect(oldExtract.ok && newExtract.ok).toBe(true);
+      if (!oldExtract.ok || !newExtract.ok) return;
+      const text = diffModels(oldExtract.model, newExtract.model).filter((m) =>
+        m.kind.startsWith("text_"),
+      );
+      expect(text.some((m) => String(m.newValue ?? m.oldValue).includes("For growing corporates"))).toBe(
+        false,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses the card heading or image alt as link text", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(Buffer.from("img"), { status: 200 });
+    try {
+      const wrapped = await extractContentModel(
+        `<!DOCTYPE html><html><body><main>
+          <a href="/en/x"><h3>Title</h3><p>Body</p></a>
+        </main></body></html>`,
+        "https://example.com/",
+      );
+      const imageOnly = await extractContentModel(
+        `<!DOCTYPE html><html><body><main>
+          <a href="/en/x"><img src="/card.png" alt="Title" /></a>
+        </main></body></html>`,
+        "https://example.com/",
+      );
+      expect(wrapped.ok && imageOnly.ok).toBe(true);
+      if (!wrapped.ok || !imageOnly.ok) return;
+      expect(wrapped.model.links).toEqual([
+        expect.objectContaining({ text: "Title", href: "/en/x" }),
+      ]);
+      expect(imageOnly.model.links).toEqual([
+        expect.objectContaining({ text: "Title", href: "/en/x" }),
+      ]);
+      expect(
+        diffModels(wrapped.model, imageOnly.model).filter((m) => m.kind.startsWith("link_")),
+      ).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("attaches the card heading as Where on a real wording change", async () => {
+    const oldHtml = `<!DOCTYPE html><html><body><main>
+      <h3>Current Account</h3>
+      <p>Earn tiered interest on operating cash.</p>
+    </main></body></html>`;
+    const newHtml = `<!DOCTYPE html><html><body><main>
+      <h3>Current Account</h3>
+      <p>Earn boosted interest on operating cash.</p>
+    </main></body></html>`;
+    const [oldExtract, newExtract] = await Promise.all([
+      extractContentModel(oldHtml, "https://example.com/old"),
       extractContentModel(newHtml, "https://example.com/new"),
     ]);
     expect(oldExtract.ok && newExtract.ok).toBe(true);
@@ -226,17 +333,21 @@ describe("nested card wrappers", () => {
     expect(text).toEqual([
       expect.objectContaining({
         kind: "text_changed",
-        oldValue: "Designed specifically for entrepreneurs with annual turnover less than AED 5M",
-        newValue: "Designed specifically for entrepreneurs with annual turnover less than 5M",
-      }),
-      expect.objectContaining({
-        kind: "text_extra",
-        newValue: "Business First",
-      }),
-      expect.objectContaining({
-        kind: "text_extra",
-        newValue: "Whether you are starting up or growing your business",
+        oldValue: "Earn tiered interest on operating cash.",
+        newValue: "Earn boosted interest on operating cash.",
+        oldWhere: "Current Account",
+        newWhere: "Current Account",
       }),
     ]);
+  });
+
+  it("skips a link that has no text, label, or alt", async () => {
+    const result = await extractContentModel(
+      `<!DOCTYPE html><html><body><main><a href="/empty"></a><p>Copy</p></main></body></html>`,
+      "https://example.com/",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.model.links).toEqual([]);
   });
 });

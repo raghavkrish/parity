@@ -33,7 +33,7 @@ export function stripChrome($: CheerioAPI): void {
 export function selectContentRoot($: CheerioAPI): Cheerio<Element> {
   for (const sel of CONTENT_ROOT_SELECTORS) {
     const el = $(sel).first();
-    if (el.length) return el;
+    if (el.length) return el.add(el.nextAll());
   }
   return $("body").first();
 }

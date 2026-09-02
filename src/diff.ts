@@ -1,6 +1,6 @@
 import { layoutBoxesEqual, summarizeLayoutBox } from "./layout.js";
-import { consumeToMatch, flattenTexts } from "./normalize.js";
-import type { ContentModel, LayoutBox, Mismatch } from "./types.js";
+import { compareText, consumeToMatch, flattenTexts, indexOfExact } from "./normalize.js";
+import type { ContentModel, LayoutBox, LinkItem, Mismatch, TextBlock } from "./types.js";
 
 function summarizeLink(text: string, href: string): string {
   return `${text} -> ${href}`;
@@ -8,6 +8,18 @@ function summarizeLink(text: string, href: string): string {
 
 function summarizeImage(alt: string, hash: string | null): string {
   return `alt=${JSON.stringify(alt)} hash=${hash ?? "null"}`;
+}
+
+function withWhere(
+  mismatch: Mismatch,
+  oldBlock?: TextBlock | LinkItem,
+  newBlock?: TextBlock | LinkItem,
+): Mismatch {
+  return {
+    ...mismatch,
+    ...(oldBlock?.where ? { oldWhere: oldBlock.where } : {}),
+    ...(newBlock?.where ? { newWhere: newBlock.where } : {}),
+  };
 }
 
 export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mismatch[] {
@@ -21,7 +33,7 @@ export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mism
     while (i < oldTexts.length && j < newTexts.length) {
       const oldValue = oldTexts[i].text;
       const newValue = newTexts[j].text;
-      if (oldValue === newValue) {
+      if (compareText(oldValue) === compareText(newValue)) {
         i += 1;
         j += 1;
         continue;
@@ -38,28 +50,36 @@ export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mism
         j += 1;
         continue;
       }
-      mismatches.push({
-        kind: "text_changed",
-        index: i,
-        oldValue,
-        newValue,
-      });
+      const newHit = indexOfExact(oldValue, newTexts, j + 1);
+      const oldHit = indexOfExact(newValue, oldTexts, i + 1);
+      if (newHit != null && (oldHit == null || newHit - j <= oldHit - i)) {
+        for (let k = j; k < newHit; k++) {
+          mismatches.push(
+            withWhere({ kind: "text_extra", index: k, newValue: newTexts[k].text }, undefined, newTexts[k]),
+          );
+        }
+        j = newHit;
+        continue;
+      }
+      if (oldHit != null) {
+        for (let k = i; k < oldHit; k++) {
+          mismatches.push(
+            withWhere({ kind: "text_missing", index: k, oldValue: oldTexts[k].text }, oldTexts[k]),
+          );
+        }
+        i = oldHit;
+        continue;
+      }
+      mismatches.push(
+        withWhere({ kind: "text_changed", index: i, oldValue, newValue }, oldTexts[i], newTexts[j]),
+      );
       i += 1;
       j += 1;
     }
     for (; i < oldTexts.length; i++) {
-      mismatches.push({
-        kind: "text_missing",
-        index: i,
-        oldValue: oldTexts[i].text,
-      });
-    }
-    for (; j < newTexts.length; j++) {
-      mismatches.push({
-        kind: "text_extra",
-        index: j,
-        newValue: newTexts[j].text,
-      });
+      mismatches.push(
+        withWhere({ kind: "text_missing", index: i, oldValue: oldTexts[i].text }, oldTexts[i]),
+      );
     }
   }
 
@@ -68,68 +88,40 @@ export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mism
     const o = oldModel.links[i];
     const n = newModel.links[i];
     if (o.text !== n.text || o.href !== n.href) {
-      mismatches.push({
-        kind: "link_changed",
-        index: i,
-        oldValue: summarizeLink(o.text, o.href),
-        newValue: summarizeLink(n.text, n.href),
-      });
+      mismatches.push(
+        withWhere(
+          {
+            kind: "link_changed",
+            index: i,
+            oldValue: summarizeLink(o.text, o.href),
+            newValue: summarizeLink(n.text, n.href),
+          },
+          o,
+          n,
+        ),
+      );
     }
   }
   for (let i = linkN; i < oldModel.links.length; i++) {
     const o = oldModel.links[i];
-    mismatches.push({
-      kind: "link_missing",
-      index: i,
-      oldValue: summarizeLink(o.text, o.href),
-    });
+    mismatches.push(
+      withWhere({ kind: "link_missing", index: i, oldValue: summarizeLink(o.text, o.href) }, o),
+    );
   }
   for (let i = linkN; i < newModel.links.length; i++) {
     const n = newModel.links[i];
-    mismatches.push({
-      kind: "link_extra",
-      index: i,
-      newValue: summarizeLink(n.text, n.href),
-    });
+    mismatches.push(
+      withWhere({ kind: "link_extra", index: i, newValue: summarizeLink(n.text, n.href) }, undefined, n),
+    );
   }
 
   const imageN = Math.min(oldModel.images.length, newModel.images.length);
-  for (let i = 0; i < imageN; i++) {
-    const o = oldModel.images[i];
-    const n = newModel.images[i];
-    if (o.hash === null || n.hash === null) {
-      mismatches.push({
-        kind: "image_error",
-        index: i,
-        oldValue: summarizeImage(o.alt, o.hash),
-        newValue: summarizeImage(n.alt, n.hash),
-        detail: o.error ?? n.error,
-      });
-      continue;
-    }
-    if (o.alt !== n.alt || o.hash !== n.hash) {
-      mismatches.push({
-        kind: "image_changed",
-        index: i,
-        oldValue: summarizeImage(o.alt, o.hash),
-        newValue: summarizeImage(n.alt, n.hash),
-      });
-    }
-  }
   for (let i = imageN; i < oldModel.images.length; i++) {
     const o = oldModel.images[i];
     mismatches.push({
       kind: "image_missing",
       index: i,
       oldValue: summarizeImage(o.alt, o.hash),
-    });
-  }
-  for (let i = imageN; i < newModel.images.length; i++) {
-    const n = newModel.images[i];
-    mismatches.push({
-      kind: "image_extra",
-      index: i,
-      newValue: summarizeImage(n.alt, n.hash),
     });
   }
 

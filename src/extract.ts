@@ -21,26 +21,33 @@ export async function extractContentModel(
   }
 
   const texts: TextBlock[] = [];
-  rootEl.find(CONTENT_TEXT_SELECTOR).each((_, el) => {
+  const headings = { h1: "", h2: "", h3: "" };
+  findInScope(rootEl, CONTENT_TEXT_SELECTOR).each((_, el) => {
     const node = $(el);
     if (node.attr("hidden") !== undefined) return;
     if (node.find(CONTENT_TEXT_SELECTOR).length) return;
     const text = normalizeText(node.text());
-    if (text) texts.push({ text });
+    if (!text) return;
+    const tag = ((el as { tagName?: string }).tagName ?? "").toLowerCase();
+    const where = headingWhere(headings, tag, text);
+    texts.push({ text, where });
   });
 
   const links: LinkItem[] = [];
-  rootEl.find("a[href]").each((_, el) => {
+  findInScope(rootEl, "a[href]").each((_, el) => {
     const node = $(el);
     if (node.attr("hidden") !== undefined) return;
     const hrefRaw = node.attr("href") ?? "";
     const href = normalizeHref(hrefRaw, pageUrl);
     if (!href) return;
-    links.push({ text: normalizeText(node.text()), href });
+    const text = linkLabel(node);
+    if (!text) return;
+    const where = nearestHeading($, node) || text;
+    links.push({ text, href, where });
   });
 
   const images: ImageItem[] = [];
-  const imgNodes = rootEl.find("img[src]").toArray();
+  const imgNodes = findInScope(rootEl, "img[src]").toArray();
   for (const el of imgNodes) {
     const node = $(el);
     if (node.attr("hidden") !== undefined) continue;
@@ -65,4 +72,66 @@ export async function extractContentModel(
 
   const model: ContentModel = { texts, links, images };
   return { ok: true, model };
+}
+
+function findInScope(root: ReturnType<typeof prepareContentRoot>, selector: string) {
+  return root.filter(selector).add(root.find(selector));
+}
+
+function headingWhere(
+  headings: { h1: string; h2: string; h3: string },
+  tag: string,
+  text: string,
+): string {
+  if (tag === "h1") {
+    headings.h1 = text;
+    headings.h2 = "";
+    headings.h3 = "";
+    return text;
+  }
+  if (tag === "h2") {
+    headings.h2 = text;
+    headings.h3 = "";
+    return [headings.h1, text].filter(Boolean).join(" › ") || text;
+  }
+  if (tag === "h3") {
+    headings.h3 = text;
+    return [headings.h1, headings.h2].filter(Boolean).join(" › ") || text;
+  }
+  return headings.h3 || headings.h2 || headings.h1 || text;
+}
+
+function nearestHeading(
+  $: cheerio.CheerioAPI,
+  node: ReturnType<typeof prepareContentRoot>,
+): string {
+  const inner = node.find("h1, h2, h3").first();
+  if (inner.length) {
+    const titled = normalizeText(inner.text());
+    if (titled) return titled;
+  }
+  let cur = node;
+  while (cur.length) {
+    const prev = cur.prevAll("h1, h2, h3").first();
+    if (prev.length) {
+      const titled = normalizeText(prev.text());
+      if (titled) return titled;
+    }
+    cur = cur.parent();
+    if (cur.is("body") || cur.is("html")) break;
+  }
+  return "";
+}
+
+function linkLabel(node: ReturnType<typeof prepareContentRoot>): string {
+  const heading = node.find("h1, h2, h3").first();
+  if (heading.length) {
+    const titled = normalizeText(heading.text());
+    if (titled) return titled;
+  }
+  const own = normalizeText(node.text());
+  if (own) return own;
+  const aria = normalizeText(node.attr("aria-label") ?? "");
+  if (aria) return aria;
+  return normalizeText(node.find("img[alt]").attr("alt") ?? "");
 }

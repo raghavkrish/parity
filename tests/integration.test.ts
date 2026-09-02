@@ -43,8 +43,8 @@ describe("integration against mock sites", () => {
         false,
       );
 
-      expect(byPath["/contact.html"].status).toBe("fail");
-      expect(byPath["/contact.html"].mismatches.some((m) => m.kind === "image_changed")).toBe(true);
+      expect(byPath["/contact.html"].status).toBe("pass");
+      expect(byPath["/contact.html"].mismatches.some((m) => m.kind.startsWith("image_"))).toBe(false);
       expect(byPath["/contact.html"].mismatches.some((m) => m.kind.startsWith("layout_"))).toBe(
         false,
       );

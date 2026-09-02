@@ -32,4 +32,16 @@ describe("prepareContentRoot", () => {
     expect(root.find("h1").text()).toBe("Banking built on trust");
     expect($("header, footer, nav").length).toBe(0);
   });
+
+  it("keeps siblings that follow a truncated main", () => {
+    const $ = cheerio.load(`<!DOCTYPE html>
+      <html><body>
+        <div id="site-content" role="main"><h1>Account Services</h1></div>
+        <h2>For growing corporates we offer tailored packages designed to meet your specific needs</h2>
+      </body></html>`);
+
+    const root = prepareContentRoot($);
+    expect(root.length).toBeGreaterThan(1);
+    expect(root.filter("h2").text()).toMatch(/For growing corporates/);
+  });
 });

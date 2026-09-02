@@ -19,6 +19,8 @@ const results: PageResult[] = [
         index: 0,
         oldValue: "Hello",
         newValue: "Hi",
+        oldWhere: "Current Account",
+        newWhere: "Current Account",
       },
     ],
   },
@@ -45,5 +47,10 @@ describe("renderHtmlReport", () => {
     expect(html).toMatch(/<strong class="count-pct"[^>]*>50<\/strong>/);
     expect(html).not.toContain('class="toolbar"');
     expect(html).not.toContain('class="bg-grid"');
+  });
+
+  it("shows Where for a changed row", () => {
+    const html = renderHtmlReport(results);
+    expect(html).toContain("Where: Current Account");
   });
 });

@@ -26,6 +26,7 @@ export function printTerminalReport(results: PageResult[]): void {
       const bits = [
         m.kind,
         m.index !== undefined ? `@${m.index}` : "",
+        formatWhere(m),
         m.oldValue !== undefined ? `old=${JSON.stringify(m.oldValue)}` : "",
         m.newValue !== undefined ? `new=${JSON.stringify(m.newValue)}` : "",
         m.detail ? `detail=${m.detail}` : "",
@@ -34,6 +35,16 @@ export function printTerminalReport(results: PageResult[]): void {
     }
   }
   console.log(`\nSummary: ${pass} pass, ${fail} fail, ${error} error (${results.length} pages)\n`);
+}
+
+function formatWhere(m: Mismatch): string {
+  const oldWhere = m.oldWhere;
+  const newWhere = m.newWhere;
+  if (oldWhere && newWhere && oldWhere === newWhere) return `Where: ${oldWhere}`;
+  if (oldWhere && newWhere) return `Where: old · ${oldWhere} / new · ${newWhere}`;
+  if (oldWhere) return `Where: ${oldWhere}`;
+  if (newWhere) return `Where: ${newWhere}`;
+  return "";
 }
 
 function escapeHtml(s: string): string {
@@ -76,6 +87,8 @@ function renderMismatch(m: Mismatch): string {
   const family = kindFamily(m.kind);
   const hasBoth = m.oldValue !== undefined && m.newValue !== undefined;
   const indexLabel = m.index !== undefined ? `<span class="idx">#${m.index}</span>` : "";
+  const where = formatWhere(m);
+  const whereHtml = where ? `<p class="where">${escapeHtml(where)}</p>` : "";
 
   if (hasBoth) {
     return `
@@ -84,6 +97,7 @@ function renderMismatch(m: Mismatch): string {
     <span class="kind-chip">${escapeHtml(m.kind)}</span>
     ${indexLabel}
   </header>
+  ${whereHtml}
   <div class="compare">
     <div class="pane old">
       <div class="pane-label">Old</div>
@@ -104,6 +118,7 @@ function renderMismatch(m: Mismatch): string {
     <span class="kind-chip">${escapeHtml(m.kind)}</span>
     ${indexLabel}
   </header>
+  ${whereHtml}
   <div class="single">
     <code>${escapeHtml(m.oldValue ?? m.newValue ?? "")}</code>
   </div>
@@ -570,6 +585,13 @@ ${fontTags}${gsapTag}  <style>
     .idx {
       font-family: "IBM Plex Mono", monospace;
       font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .where {
+      margin: -0.35rem 0 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 700;
       color: var(--muted);
     }
 

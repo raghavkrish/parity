@@ -37,8 +37,19 @@ async function collectLayoutBoxes(page: Page): Promise<LayoutBox[] | null> {
       if (!root) root = document.body;
       if (!root) return null;
 
+      const scopes: HTMLElement[] = [];
+      let scope: HTMLElement | null = root;
+      while (scope) {
+        scopes.push(scope);
+        scope = scope.nextElementSibling as HTMLElement | null;
+      }
+
       const rootRect = root.getBoundingClientRect();
-      const nodes = Array.from(root.querySelectorAll(selector)) as HTMLElement[];
+      const nodes: HTMLElement[] = [];
+      for (const block of scopes) {
+        if (block.matches(selector)) nodes.push(block);
+        nodes.push(...(Array.from(block.querySelectorAll(selector)) as HTMLElement[]));
+      }
       return nodes
         .filter((el) => !el.hasAttribute("hidden") && !el.querySelector(selector))
         .map((el) => {

@@ -2,9 +2,14 @@ export function normalizeText(input: string): string {
   return input.replace(/\s+/g, " ").trim();
 }
 
+/** Compare form: drop the AED currency token, then collapse spaces. */
+export function compareText(input: string): string {
+  return normalizeText(input.replace(/\bAED\b/gi, " "));
+}
+
 /** Join per-tag text blocks so split/merged headings compare as the same copy. */
 export function flattenTexts(texts: Array<{ text: string }>): string {
-  return normalizeText(texts.map((t) => t.text).join(" "));
+  return compareText(texts.map((t) => t.text).join(" "));
 }
 
 export const TEXT_MERGE_CAP = 8;
@@ -19,14 +24,30 @@ export function consumeToMatch(
   start: number,
   cap = TEXT_MERGE_CAP,
 ): number | null {
-  const want = normalizeText(target);
+  const want = compareText(target);
   if (!want || start >= blocks.length) return null;
   let acc = "";
   const limit = Math.min(blocks.length, start + cap);
   for (let k = start; k < limit; k++) {
-    acc = normalizeText(acc ? `${acc} ${blocks[k].text}` : blocks[k].text);
+    acc = compareText(acc ? `${acc} ${blocks[k].text}` : blocks[k].text);
     if (acc === want) return k + 1;
     if (!want.startsWith(acc)) return null;
+  }
+  return null;
+}
+
+/** First exact text match in [start, start+cap). */
+export function indexOfExact(
+  target: string,
+  blocks: Array<{ text: string }>,
+  start: number,
+  cap = TEXT_MERGE_CAP,
+): number | null {
+  const want = compareText(target);
+  if (!want || start >= blocks.length) return null;
+  const limit = Math.min(blocks.length, start + cap);
+  for (let k = start; k < limit; k++) {
+    if (compareText(blocks[k].text) === want) return k;
   }
   return null;
 }
