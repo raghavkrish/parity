@@ -114,4 +114,129 @@ describe("text compare ignores heading structure", () => {
       false,
     );
   });
+
+  it("does not flag a split hero when a later paragraph changes", async () => {
+    const oldHtml = `<!DOCTYPE html><html><body>
+      <div id="site-content" role="main">
+        <h1><sup>Account Services</sup>
+        A choice of accounts as unique as your business</h1>
+        <p>Earn tiered interest on operating cash.</p>
+      </div>
+    </body></html>`;
+    const newHtml = `<!DOCTYPE html><html><body>
+      <div id="site-content" role="main">
+        <p>Account Services</p>
+        <h2>A choice of accounts as unique as your business</h2>
+        <p>Earn boosted interest on operating cash.</p>
+      </div>
+    </body></html>`;
+
+    const [oldExtract, newExtract] = await Promise.all([
+      extractContentModel(oldHtml, "https://example.com/old"),
+      extractContentModel(newHtml, "https://example.com/new"),
+    ]);
+    expect(oldExtract.ok && newExtract.ok).toBe(true);
+    if (!oldExtract.ok || !newExtract.ok) return;
+    const text = diffModels(oldExtract.model, newExtract.model).filter((m) =>
+      m.kind.startsWith("text_"),
+    );
+    expect(text).toHaveLength(1);
+    expect(text[0]).toMatchObject({
+      kind: "text_changed",
+      oldValue: "Earn tiered interest on operating cash.",
+      newValue: "Earn boosted interest on operating cash.",
+    });
+  });
+});
+
+describe("nested card wrappers", () => {
+  const oldCard = `<!DOCTYPE html><html><body>
+    <div id="site-content" role="main">
+      <h3>Sustainable Call Account</h3>
+      <p>Empowering a sustainable future for businesses</p>
+      <h3>Retail Business Accounts</h3>
+      <p>Designed specifically for entrepreneurs with annual turnover less than AED 5M</p>
+    </div>
+  </body></html>`;
+
+  const newSameCopy = `<!DOCTYPE html><html><body>
+    <div id="site-content" role="main">
+      <li>
+        <h3>Sustainable Call Account</h3>
+        <p>Empowering a sustainable future for businesses</p>
+      </li>
+      <li>
+        <h3>Retail Business Accounts</h3>
+        <p>Designed specifically for entrepreneurs with annual turnover less than AED 5M</p>
+      </li>
+    </div>
+  </body></html>`;
+
+  it("extracts leaf title and body from li > h3 + p, not the wrapper", async () => {
+    const result = await extractContentModel(newSameCopy, "https://example.com/new");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.model.texts.map((t) => t.text)).toEqual([
+      "Sustainable Call Account",
+      "Empowering a sustainable future for businesses",
+      "Retail Business Accounts",
+      "Designed specifically for entrepreneurs with annual turnover less than AED 5M",
+    ]);
+  });
+
+  it("does not flag the same card copy when new wraps it in li", async () => {
+    const [oldExtract, newExtract] = await Promise.all([
+      extractContentModel(oldCard, "https://example.com/old"),
+      extractContentModel(newSameCopy, "https://example.com/new"),
+    ]);
+    expect(oldExtract.ok && newExtract.ok).toBe(true);
+    if (!oldExtract.ok || !newExtract.ok) return;
+    expect(diffModels(oldExtract.model, newExtract.model).filter((m) => m.kind.startsWith("text_"))).toEqual(
+      [],
+    );
+  });
+
+  it("still flags AED 5M vs 5M and a new-only card", async () => {
+    const newHtml = `<!DOCTYPE html><html><body>
+      <div id="site-content" role="main">
+        <li>
+          <h3>Sustainable Call Account</h3>
+          <p>Empowering a sustainable future for businesses</p>
+        </li>
+        <li>
+          <h3>Retail Business Accounts</h3>
+          <p>Designed specifically for entrepreneurs with annual turnover less than 5M</p>
+        </li>
+        <li>
+          <h3>Business First</h3>
+          <p>Whether you are starting up or growing your business</p>
+        </li>
+      </div>
+    </body></html>`;
+
+    const [oldExtract, newExtract] = await Promise.all([
+      extractContentModel(oldCard, "https://example.com/old"),
+      extractContentModel(newHtml, "https://example.com/new"),
+    ]);
+    expect(oldExtract.ok && newExtract.ok).toBe(true);
+    if (!oldExtract.ok || !newExtract.ok) return;
+    const text = diffModels(oldExtract.model, newExtract.model).filter((m) =>
+      m.kind.startsWith("text_"),
+    );
+    expect(text).toEqual([
+      expect.objectContaining({
+        kind: "text_changed",
+        oldValue: "Designed specifically for entrepreneurs with annual turnover less than AED 5M",
+        newValue: "Designed specifically for entrepreneurs with annual turnover less than 5M",
+      }),
+      expect.objectContaining({
+        kind: "text_extra",
+        newValue: "Business First",
+      }),
+      expect.objectContaining({
+        kind: "text_extra",
+        newValue: "Whether you are starting up or growing your business",
+      }),
+    ]);
+  });
 });

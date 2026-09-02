@@ -1,5 +1,5 @@
 import { layoutBoxesEqual, summarizeLayoutBox } from "./layout.js";
-import { flattenTexts } from "./normalize.js";
+import { consumeToMatch, flattenTexts } from "./normalize.js";
 import type { ContentModel, LayoutBox, Mismatch } from "./types.js";
 
 function summarizeLink(text: string, href: string): string {
@@ -14,29 +14,51 @@ export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mism
   const mismatches: Mismatch[] = [];
 
   if (flattenTexts(oldModel.texts) !== flattenTexts(newModel.texts)) {
-    const textN = Math.min(oldModel.texts.length, newModel.texts.length);
-    for (let i = 0; i < textN; i++) {
-      if (oldModel.texts[i].text !== newModel.texts[i].text) {
-        mismatches.push({
-          kind: "text_changed",
-          index: i,
-          oldValue: oldModel.texts[i].text,
-          newValue: newModel.texts[i].text,
-        });
+    let i = 0;
+    let j = 0;
+    const oldTexts = oldModel.texts;
+    const newTexts = newModel.texts;
+    while (i < oldTexts.length && j < newTexts.length) {
+      const oldValue = oldTexts[i].text;
+      const newValue = newTexts[j].text;
+      if (oldValue === newValue) {
+        i += 1;
+        j += 1;
+        continue;
       }
+      const newEnd = consumeToMatch(oldValue, newTexts, j);
+      if (newEnd != null) {
+        i += 1;
+        j = newEnd;
+        continue;
+      }
+      const oldEnd = consumeToMatch(newValue, oldTexts, i);
+      if (oldEnd != null) {
+        i = oldEnd;
+        j += 1;
+        continue;
+      }
+      mismatches.push({
+        kind: "text_changed",
+        index: i,
+        oldValue,
+        newValue,
+      });
+      i += 1;
+      j += 1;
     }
-    for (let i = textN; i < oldModel.texts.length; i++) {
+    for (; i < oldTexts.length; i++) {
       mismatches.push({
         kind: "text_missing",
         index: i,
-        oldValue: oldModel.texts[i].text,
+        oldValue: oldTexts[i].text,
       });
     }
-    for (let i = textN; i < newModel.texts.length; i++) {
+    for (; j < newTexts.length; j++) {
       mismatches.push({
         kind: "text_extra",
-        index: i,
-        newValue: newModel.texts[i].text,
+        index: j,
+        newValue: newTexts[j].text,
       });
     }
   }

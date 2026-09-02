@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_MAX_PAGES, discoverPairs } from "./discover.js";
+import { resolveUploadSite } from "./htmlOrigin.js";
 import { executeRun } from "./jobs.js";
 import { parseSiteUrl } from "./origins.js";
 import type { RunStore } from "./runStore.js";
@@ -29,7 +30,7 @@ export function createApp(options: AppOptions): express.Express {
 
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "16mb" }));
   app.use(express.static(publicDir));
 
   let busy = false;
@@ -158,6 +159,68 @@ export function createApp(options: AppOptions): express.Express {
     const oldUrl = typeof req.body?.oldUrl === "string" ? req.body.oldUrl : "";
     const newUrl = typeof req.body?.newUrl === "string" ? req.body.newUrl : "";
     const mappingCsv = typeof req.body?.mappingCsv === "string" ? req.body.mappingCsv : undefined;
+    const oldHtml = typeof req.body?.oldHtml === "string" ? req.body.oldHtml.trim() : "";
+    const newHtml = typeof req.body?.newHtml === "string" ? req.body.newHtml.trim() : "";
+
+    if (Boolean(oldHtml) !== Boolean(newHtml)) {
+      res.status(400).json({ error: "Upload both old and new HTML files, or neither." });
+      return;
+    }
+
+    if (oldHtml && newHtml) {
+      const [oldSite, newSite] = await Promise.all([
+        resolveUploadSite(oldHtml, oldUrl, { allowPrivate, label: "Old" }),
+        resolveUploadSite(newHtml, newUrl, { allowPrivate, label: "New" }),
+      ]);
+      if (!oldSite.ok) {
+        res.status(400).json({ error: oldSite.error });
+        return;
+      }
+      if (!newSite.ok) {
+        res.status(400).json({ error: newSite.error });
+        return;
+      }
+
+      const pairs = [{ oldPath: oldSite.path, newPath: newSite.path }];
+      busy = true;
+      let runId: string;
+      try {
+        runId = await store.createRun({
+          oldOrigin: oldSite.origin,
+          newOrigin: newSite.origin,
+          source: "upload",
+          pairs,
+        });
+      } catch (err) {
+        busy = false;
+        const message = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: message });
+        return;
+      }
+
+      res.status(202).json({
+        runId,
+        source: "upload",
+        pageCount: 1,
+        truncated: false,
+        timeoutMs: runTimeoutMs,
+      });
+
+      void execute({
+        store,
+        runId,
+        oldOrigin: oldSite.origin,
+        newOrigin: newSite.origin,
+        pairs,
+        timeoutMs: runTimeoutMs,
+        allowPrivate,
+        source: "upload",
+        html: { old: oldHtml, new: newHtml },
+      }).finally(() => {
+        busy = false;
+      });
+      return;
+    }
 
     const [oldParsed, newParsed] = await Promise.all([
       parseSiteUrl(oldUrl, { allowPrivate }),

@@ -5,7 +5,7 @@ import type { MappingPair } from "./types.js";
 
 export const DEFAULT_MAX_PAGES = 25;
 
-export type DiscoverSource = "csv" | "sitemap" | "single";
+export type DiscoverSource = "csv" | "sitemap" | "single" | "upload";
 
 export type DiscoverResult = {
   pairs: MappingPair[];

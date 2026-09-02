@@ -56,10 +56,11 @@ export type ExecuteRunInput = {
   timeoutMs: number;
   allowPrivate?: boolean;
   source?: DiscoverSource;
+  html?: { old: string; new: string };
 };
 
 export async function executeRun(input: ExecuteRunInput): Promise<void> {
-  const { store, runId, oldOrigin, newOrigin, pairs, timeoutMs, allowPrivate, source } = input;
+  const { store, runId, oldOrigin, newOrigin, pairs, timeoutMs, allowPrivate, source, html: uploadedHtml } = input;
   await withLogContext({ runId }, async () => {
     log.info("run start", {
       oldOrigin,
@@ -70,7 +71,11 @@ export async function executeRun(input: ExecuteRunInput): Promise<void> {
     });
     try {
       const output = await runWithBrowserTimeout(timeoutMs, async (browser) => {
-        const results = await checkAll(oldOrigin, newOrigin, pairs, { browser, allowPrivate });
+        const results = await checkAll(oldOrigin, newOrigin, pairs, {
+          browser,
+          allowPrivate,
+          html: uploadedHtml,
+        });
         const html = renderHtmlReport(results);
         const printHtml = renderHtmlReport(results, { printMode: true });
         const pdf = await renderPdf(browser, printHtml);

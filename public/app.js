@@ -6,6 +6,8 @@ const progressLabel = document.getElementById("run-progress-label");
 const reportModal = document.getElementById("report-modal");
 const report = document.getElementById("report");
 const reportClose = document.getElementById("report-close");
+const oldUrlInput = document.getElementById("old-url");
+const newUrlInput = document.getElementById("new-url");
 
 let activeRunId = "";
 
@@ -156,6 +158,86 @@ async function poll(runId, timeoutMs) {
   setStatus("Timed out waiting for the run.", "fail");
 }
 
+function bindHtmlDrop(zone, input) {
+  const nameEl = zone.querySelector(".drop-name");
+  const clearBtn = zone.querySelector(".drop-clear");
+  const placeholder = nameEl.textContent;
+  let html = "";
+
+  function syncUrlRequired() {
+    const both = Boolean(oldHtmlDrop.get() && newHtmlDrop.get());
+    oldUrlInput.required = !both;
+    newUrlInput.required = !both;
+  }
+
+  function clear() {
+    html = "";
+    input.value = "";
+    nameEl.textContent = placeholder;
+    clearBtn.hidden = true;
+    zone.removeAttribute("data-filled");
+    syncUrlRequired();
+  }
+
+  async function setFile(file) {
+    if (!file) {
+      clear();
+      return;
+    }
+    if (!/\.html?$/i.test(file.name)) {
+      setStatus("Use an .html or .htm file.", "fail");
+      return;
+    }
+    html = await file.text();
+    nameEl.textContent = file.name;
+    clearBtn.hidden = false;
+    zone.setAttribute("data-filled", "true");
+    syncUrlRequired();
+  }
+
+  zone.addEventListener("click", (event) => {
+    if (event.target.closest(".drop-clear")) return;
+    input.click();
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.setAttribute("data-over", "true");
+  });
+  zone.addEventListener("dragleave", () => {
+    zone.removeAttribute("data-over");
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.removeAttribute("data-over");
+    const file = event.dataTransfer?.files?.[0];
+    void setFile(file);
+  });
+  input.addEventListener("change", () => {
+    void setFile(input.files[0]);
+  });
+  input.addEventListener("click", (event) => event.stopPropagation());
+  clearBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    clear();
+  });
+
+  return {
+    get() {
+      return html;
+    },
+    syncUrlRequired,
+  };
+}
+
+const oldHtmlDrop = bindHtmlDrop(
+  document.getElementById("old-html-zone"),
+  document.getElementById("old-html"),
+);
+const newHtmlDrop = bindHtmlDrop(
+  document.getElementById("new-html-zone"),
+  document.getElementById("new-html"),
+);
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setBusy(true, "Starting comparison…");
@@ -163,14 +245,22 @@ form.addEventListener("submit", async (event) => {
   try {
     const file = document.getElementById("csv").files[0];
     const mappingCsv = file ? await file.text() : undefined;
+    const oldHtml = oldHtmlDrop.get();
+    const newHtml = newHtmlDrop.get();
+    const body = {};
+    const oldUrl = oldUrlInput.value.trim();
+    const newUrl = newUrlInput.value.trim();
+    if (oldUrl) body.oldUrl = oldUrl;
+    if (newUrl) body.newUrl = newUrl;
+    if (mappingCsv) body.mappingCsv = mappingCsv;
+    if (oldHtml && newHtml) {
+      body.oldHtml = oldHtml;
+      body.newHtml = newHtml;
+    }
     const res = await fetch("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        oldUrl: document.getElementById("old-url").value,
-        newUrl: document.getElementById("new-url").value,
-        mappingCsv,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {

@@ -3,7 +3,7 @@ import { chromium } from "playwright";
 import { diffLayouts, diffModels } from "./diff.js";
 import { extractContentModel } from "./extract.js";
 import { fetchPage } from "./fetchPage.js";
-import { createBrowserPage, extractLayoutBoxes } from "./layout.js";
+import { createBrowserPage, extractLayoutBoxes, extractLayoutFromHtml } from "./layout.js";
 import { log } from "./log.js";
 import { isSafeHttpPath } from "./origins.js";
 import type { MappingPair, PageResult } from "./types.js";
@@ -13,6 +13,7 @@ export type CheckOptions = {
   allowPrivate?: boolean;
   index?: number;
   total?: number;
+  html?: { old: string; new: string };
 };
 
 export async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
@@ -75,22 +76,31 @@ export async function checkPair(
     return finish("error", [], "invalid mapping row");
   }
 
-  const [oldFetch, newFetch] = await Promise.all([
-    fetchPage(oldOrigin, oldPath, fetchOpts),
-    fetchPage(newOrigin, newPath, fetchOpts),
-  ]);
+  let oldHtml: string;
+  let newHtml: string;
+  if (options.html) {
+    oldHtml = options.html.old;
+    newHtml = options.html.new;
+  } else {
+    const [oldFetch, newFetch] = await Promise.all([
+      fetchPage(oldOrigin, oldPath, fetchOpts),
+      fetchPage(newOrigin, newPath, fetchOpts),
+    ]);
 
-  if (!oldFetch.ok || !newFetch.ok) {
-    const reasons = [
-      !oldFetch.ok ? `old: ${oldFetch.error}` : null,
-      !newFetch.ok ? `new: ${newFetch.error}` : null,
-    ].filter(Boolean);
-    return finish("error", [], reasons.join("; "));
+    if (!oldFetch.ok || !newFetch.ok) {
+      const reasons = [
+        !oldFetch.ok ? `old: ${oldFetch.error}` : null,
+        !newFetch.ok ? `new: ${newFetch.error}` : null,
+      ].filter(Boolean);
+      return finish("error", [], reasons.join("; "));
+    }
+    oldHtml = oldFetch.html;
+    newHtml = newFetch.html;
   }
 
   const [oldExtract, newExtract] = await Promise.all([
-    extractContentModel(oldFetch.html, oldUrl, fetchOpts),
-    extractContentModel(newFetch.html, newUrl, fetchOpts),
+    extractContentModel(oldHtml, oldUrl, fetchOpts),
+    extractContentModel(newHtml, newUrl, fetchOpts),
   ]);
 
   if (!oldExtract.ok || !newExtract.ok) {
@@ -106,8 +116,12 @@ export async function checkPair(
   const runLayout = async (browser: Browser) => {
     const page = await createBrowserPage(browser);
     try {
-      const oldLayout = await extractLayoutBoxes(page, oldUrl);
-      const newLayout = await extractLayoutBoxes(page, newUrl);
+      const oldLayout = options.html
+        ? await extractLayoutFromHtml(page, options.html.old, oldUrl)
+        : await extractLayoutBoxes(page, oldUrl);
+      const newLayout = options.html
+        ? await extractLayoutFromHtml(page, options.html.new, newUrl)
+        : await extractLayoutBoxes(page, newUrl);
       if (!oldLayout.ok || !newLayout.ok) {
         return {
           error: [

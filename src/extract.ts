@@ -1,12 +1,10 @@
 import * as cheerio from "cheerio";
 import { createHash } from "node:crypto";
-import { prepareContentRoot } from "./contentRoot.js";
+import { CONTENT_TEXT_SELECTOR, prepareContentRoot } from "./contentRoot.js";
 import { fetchBytes, type FetchOptions } from "./fetchPage.js";
 import { log } from "./log.js";
 import { normalizeHref, normalizeText } from "./normalize.js";
 import type { ContentModel, ExtractResult, ImageItem, LinkItem, TextBlock } from "./types.js";
-
-const TEXT_SELECTOR = "h1, h2, h3, p, li, td, th, button";
 
 export async function extractContentModel(
   html: string,
@@ -23,9 +21,10 @@ export async function extractContentModel(
   }
 
   const texts: TextBlock[] = [];
-  rootEl.find(TEXT_SELECTOR).each((_, el) => {
+  rootEl.find(CONTENT_TEXT_SELECTOR).each((_, el) => {
     const node = $(el);
     if (node.attr("hidden") !== undefined) return;
+    if (node.find(CONTENT_TEXT_SELECTOR).length) return;
     const text = normalizeText(node.text());
     if (text) texts.push({ text });
   });

@@ -24,6 +24,8 @@ export const CONTENT_ROOT_SELECTORS = [
   "main",
 ] as const;
 
+export const CONTENT_TEXT_SELECTOR = "h1, h2, h3, p, li, td, th, button";
+
 export function stripChrome($: CheerioAPI): void {
   $(CHROME_SELECTOR).remove();
 }

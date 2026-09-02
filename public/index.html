@@ -150,6 +150,52 @@
       font-weight: 500;
     }
 
+    .drop-zone {
+      display: grid;
+      gap: 0.4rem;
+      padding: 0.85rem;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: rgba(255, 253, 249, 0.7);
+      cursor: pointer;
+      min-height: 5.6rem;
+      align-content: start;
+    }
+
+    .drop-zone[data-over="true"] {
+      border-color: var(--brass);
+      background: rgba(138, 106, 50, 0.08);
+    }
+
+    .drop-zone[data-filled="true"] {
+      border-style: solid;
+    }
+
+    .drop-zone input { display: none; }
+
+    .drop-zone .drop-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .drop-zone .drop-name {
+      font-weight: 500;
+      color: var(--muted);
+      font-size: 0.82rem;
+      word-break: break-all;
+    }
+
+    .drop-zone[data-filled="true"] .drop-name {
+      color: var(--ink);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.78rem;
+    }
+
+    .drop-zone .drop-clear {
+      justify-self: start;
+    }
+
     button,
     .ghost {
       appearance: none;
@@ -356,6 +402,20 @@
             <label>New site URL
               <input id="new-url" type="url" required placeholder="https://new.example.com" autocomplete="url" />
             </label>
+          </div>
+          <div class="pair">
+            <div class="drop-zone" id="old-html-zone">
+              <span class="drop-title">Old HTML</span>
+              <input id="old-html" type="file" accept=".html,.htm,text/html" />
+              <span class="drop-name">Drop or click a .html / .htm file</span>
+              <button type="button" class="ghost drop-clear" hidden>Clear</button>
+            </div>
+            <div class="drop-zone" id="new-html-zone">
+              <span class="drop-title">New HTML</span>
+              <input id="new-html" type="file" accept=".html,.htm,text/html" />
+              <span class="drop-name">Drop or click a .html / .htm file</span>
+              <button type="button" class="ghost drop-clear" hidden>Clear</button>
+            </div>
           </div>
           <div class="csv-row">
             <label>Optional mapping CSV

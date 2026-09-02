@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { diffLayouts, diffModels } from "../src/diff.js";
 import { layoutBoxesEqual, summarizeLayoutBox } from "../src/layout.js";
-import { flattenTexts, normalizeHref, normalizeText } from "../src/normalize.js";
+import { consumeToMatch, flattenTexts, normalizeHref, normalizeText } from "../src/normalize.js";
 import type { ContentModel, LayoutBox } from "../src/types.js";
 
 describe("normalizeText", () => {
@@ -18,6 +18,27 @@ describe("flattenTexts", () => {
         { text: "A choice of accounts as unique as your business" },
       ]),
     ).toBe("Account Services A choice of accounts as unique as your business");
+  });
+});
+
+describe("consumeToMatch", () => {
+  it("consumes split blocks that reassemble the target", () => {
+    const blocks = [
+      { text: "Account Services" },
+      { text: "A choice of accounts as unique as your business" },
+      { text: "Next card" },
+    ];
+    expect(
+      consumeToMatch(
+        "Account Services A choice of accounts as unique as your business",
+        blocks,
+        0,
+      ),
+    ).toBe(2);
+  });
+
+  it("returns null when the next block diverges", () => {
+    expect(consumeToMatch("Earn tiered interest", [{ text: "Earn boosted interest" }], 0)).toBeNull();
   });
 });
 
@@ -113,6 +134,39 @@ describe("diffModels", () => {
         newValue: "Earn boosted interest on operating cash with same-day internal transfers.",
       }),
     ]);
+  });
+
+  it("aligns a split heading when later copy actually changes", () => {
+    const oldModel: ContentModel = {
+      texts: [
+        { text: "Account Services A choice of accounts as unique as your business" },
+        { text: "Card title" },
+        { text: "Earn tiered interest on operating cash." },
+      ],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "Account Services" },
+        { text: "A choice of accounts as unique as your business" },
+        { text: "Card title" },
+        { text: "Earn boosted interest on operating cash." },
+      ],
+      links: [],
+      images: [],
+    };
+    const text = diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"));
+    expect(text).toEqual([
+      expect.objectContaining({
+        kind: "text_changed",
+        oldValue: "Earn tiered interest on operating cash.",
+        newValue: "Earn boosted interest on operating cash.",
+      }),
+    ]);
+    expect(text.some((m) => String(m.oldValue ?? m.newValue).includes("Account Services"))).toBe(
+      false,
+    );
   });
 });
 

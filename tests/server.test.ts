@@ -8,6 +8,19 @@ async function json(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
 }
 
+async function postRun(origin: string, body: Record<string, unknown>) {
+  for (let i = 0; i < 40; i++) {
+    const res = await fetch(`${origin}/api/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status !== 429) return res;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("server stayed busy");
+}
+
 describe("web API", () => {
   let mongod: MongoMemoryServer;
   let client: MongoClient;
@@ -127,5 +140,40 @@ describe("web API", () => {
     expect(created.status).toBe(202);
     const payload = await json(created);
     expect(payload.timeoutMs).toBeTypeOf("number");
+  });
+
+  it("creates an upload run from two HTML snapshots", async () => {
+    const created = await postRun(origin, {
+      oldHtml: `<html><head><link rel="canonical" href="https://example.com/old/"></head><body>old</body></html>`,
+      newHtml: `<html><head><link rel="canonical" href="https://example.org/new/"></head><body>new</body></html>`,
+    });
+    expect(created.status).toBe(202);
+    const payload = await json(created);
+    expect(payload.source).toBe("upload");
+    expect(payload.pageCount).toBe(1);
+
+    const detail = await fetch(`${origin}/api/runs/${String(payload.runId)}`);
+    const body = (await detail.json()) as { source: string; pageCount: number };
+    expect(body.source).toBe("upload");
+    expect(body.pageCount).toBe(1);
+  });
+
+  it("rejects a single uploaded HTML file", async () => {
+    const res = await postRun(origin, {
+      oldHtml: "<html><body>old only</body></html>",
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(String(body.error)).toMatch(/both old and new/i);
+  });
+
+  it("rejects uploaded HTML with no inferable origin", async () => {
+    const res = await postRun(origin, {
+      oldHtml: "<html><body>old</body></html>",
+      newHtml: "<html><body>new</body></html>",
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(String(body.error)).toMatch(/canonical or base URL/i);
   });
 });
