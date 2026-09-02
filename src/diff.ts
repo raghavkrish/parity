@@ -1,4 +1,5 @@
 import { layoutBoxesEqual, summarizeLayoutBox } from "./layout.js";
+import { flattenTexts } from "./normalize.js";
 import type { ContentModel, LayoutBox, Mismatch } from "./types.js";
 
 function summarizeLink(text: string, href: string): string {
@@ -12,30 +13,32 @@ function summarizeImage(alt: string, hash: string | null): string {
 export function diffModels(oldModel: ContentModel, newModel: ContentModel): Mismatch[] {
   const mismatches: Mismatch[] = [];
 
-  const textN = Math.min(oldModel.texts.length, newModel.texts.length);
-  for (let i = 0; i < textN; i++) {
-    if (oldModel.texts[i].text !== newModel.texts[i].text) {
+  if (flattenTexts(oldModel.texts) !== flattenTexts(newModel.texts)) {
+    const textN = Math.min(oldModel.texts.length, newModel.texts.length);
+    for (let i = 0; i < textN; i++) {
+      if (oldModel.texts[i].text !== newModel.texts[i].text) {
+        mismatches.push({
+          kind: "text_changed",
+          index: i,
+          oldValue: oldModel.texts[i].text,
+          newValue: newModel.texts[i].text,
+        });
+      }
+    }
+    for (let i = textN; i < oldModel.texts.length; i++) {
       mismatches.push({
-        kind: "text_changed",
+        kind: "text_missing",
         index: i,
         oldValue: oldModel.texts[i].text,
+      });
+    }
+    for (let i = textN; i < newModel.texts.length; i++) {
+      mismatches.push({
+        kind: "text_extra",
+        index: i,
         newValue: newModel.texts[i].text,
       });
     }
-  }
-  for (let i = textN; i < oldModel.texts.length; i++) {
-    mismatches.push({
-      kind: "text_missing",
-      index: i,
-      oldValue: oldModel.texts[i].text,
-    });
-  }
-  for (let i = textN; i < newModel.texts.length; i++) {
-    mismatches.push({
-      kind: "text_extra",
-      index: i,
-      newValue: newModel.texts[i].text,
-    });
   }
 
   const linkN = Math.min(oldModel.links.length, newModel.links.length);

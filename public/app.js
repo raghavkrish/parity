@@ -2,12 +2,22 @@ const form = document.getElementById("compare-form");
 const statusEl = document.getElementById("status");
 const submitBtn = document.getElementById("submit");
 const historyEl = document.getElementById("history");
-const reportWrap = document.getElementById("report-wrap");
+const progressLabel = document.getElementById("run-progress-label");
+const reportModal = document.getElementById("report-modal");
 const report = document.getElementById("report");
+const reportClose = document.getElementById("report-close");
+
+let activeRunId = "";
 
 function setStatus(message, tone) {
   statusEl.textContent = message;
   statusEl.dataset.tone = tone || "";
+}
+
+function setBusy(busy, label) {
+  form.setAttribute("aria-busy", busy ? "true" : "false");
+  submitBtn.disabled = busy;
+  if (label) progressLabel.textContent = label;
 }
 
 function fmtTime(value) {
@@ -35,6 +45,19 @@ function el(tag, attrs, text) {
   return node;
 }
 
+function openReport(runId) {
+  report.src = `/api/runs/${runId}/report`;
+  reportModal.hidden = false;
+  document.body.classList.add("modal-open");
+  reportClose.focus();
+}
+
+function closeReport() {
+  reportModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  report.removeAttribute("src");
+}
+
 function renderHistory(runs) {
   historyEl.replaceChildren();
   if (!runs.length) {
@@ -55,7 +78,8 @@ function renderHistory(runs) {
 
   const tbody = el("tbody");
   for (const run of runs) {
-    const row = el("tr");
+    const row = el("tr", { "data-run-id": run._id });
+    if (run._id === activeRunId) row.setAttribute("data-active", "true");
     row.append(el("td", null, fmtTime(run.createdAt)));
 
     const sites = el("td");
@@ -68,12 +92,16 @@ function renderHistory(runs) {
 
     row.append(el("td", null, String(run.pageCount ?? 0)));
     const statusTd = el("td");
-    statusTd.append(el("span", { class: `stamp ${run.status}` }, run.status));
+    const stamp = el("span", { class: `stamp ${run.status}` }, run.status);
+    if (run.status === "running") {
+      stamp.prepend(el("span", { class: "ring sm", "aria-hidden": "true" }));
+    }
+    statusTd.append(stamp);
     row.append(statusTd);
 
     const actions = el("td", { class: "actions" });
     if (run.status === "done") {
-      const open = el("a", { class: "ghost", href: `/api/runs/${run._id}/report`, target: "_blank", rel: "noreferrer" }, "Open");
+      const open = el("button", { type: "button", class: "ghost", "data-open-report": run._id }, "Open");
       const pdf = el("a", { class: "ghost", href: `/api/runs/${run._id}/report.pdf` }, "PDF");
       const json = el("a", { class: "ghost", href: `/api/runs/${run._id}/data.json` }, "JSON");
       actions.append(open, pdf, json);
@@ -99,6 +127,7 @@ async function poll(runId, timeoutMs) {
   while (Date.now() - started < deadline) {
     const res = await fetch(`/api/runs/${runId}`);
     if (!res.ok) {
+      setBusy(false);
       setStatus("Lost the run. Refresh history.", "fail");
       return;
     }
@@ -106,25 +135,30 @@ async function poll(runId, timeoutMs) {
     if (run.status === "done") {
       const tone = run.summary.fail || run.summary.error ? "fail" : "pass";
       setStatus(`Done. ${run.summary.pass} pass, ${run.summary.fail} fail, ${run.summary.error} error.`, tone);
-      report.src = `/api/runs/${runId}/report`;
-      reportWrap.hidden = false;
+      setBusy(false);
       await loadHistory();
+      openReport(runId);
       return;
     }
     if (run.status === "failed") {
+      setBusy(false);
       setStatus(run.errorReason || "The comparison failed.", "fail");
       await loadHistory();
       return;
     }
-    setStatus(`Comparing ${run.pageCount} page${run.pageCount === 1 ? "" : "s"}…`, "busy");
+    const pages = `Comparing ${run.pageCount} page${run.pageCount === 1 ? "" : "s"}…`;
+    setStatus(pages, "busy");
+    progressLabel.textContent = pages;
+    await loadHistory();
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
+  setBusy(false);
   setStatus("Timed out waiting for the run.", "fail");
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  submitBtn.disabled = true;
+  setBusy(true, "Starting comparison…");
   setStatus("Starting comparison…", "busy");
   try {
     const file = document.getElementById("csv").files[0];
@@ -140,18 +174,37 @@ form.addEventListener("submit", async (event) => {
     });
     const data = await res.json();
     if (!res.ok) {
+      setBusy(false);
       setStatus(data.error || "Could not start the run.", "fail");
       return;
     }
+    activeRunId = data.runId;
     const queued = `Queued ${data.pageCount} page${data.pageCount === 1 ? "" : "s"} from ${data.source}.`;
     setStatus(data.note ? `${queued} ${data.note}` : queued, "busy");
+    progressLabel.textContent = `Comparing ${data.pageCount} page${data.pageCount === 1 ? "" : "s"}…`;
+    await loadHistory();
     await poll(data.runId, data.timeoutMs);
   } catch (err) {
+    setBusy(false);
     setStatus(err instanceof Error ? err.message : String(err), "fail");
   } finally {
     submitBtn.disabled = false;
     await loadHistory();
   }
+});
+
+historyEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-open-report]");
+  if (!button) return;
+  openReport(button.getAttribute("data-open-report"));
+});
+
+reportClose.addEventListener("click", closeReport);
+reportModal.addEventListener("click", (event) => {
+  if (event.target === reportModal) closeReport();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !reportModal.hidden) closeReport();
 });
 
 loadHistory().catch((err) => setStatus(err.message, "fail"));

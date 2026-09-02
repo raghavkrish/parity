@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { diffModels } from "../src/diff.js";
 import { extractContentModel } from "../src/extract.js";
 
 describe("extractContentModel root fallback", () => {
@@ -85,5 +86,32 @@ describe("extractContentModel root fallback", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("text compare ignores heading structure", () => {
+  it("treats h1+sup and p+h2 as the same copy", async () => {
+    const oldHtml = `<!DOCTYPE html><html><body>
+      <div id="site-content" role="main">
+        <h1><sup>Account Services</sup>
+        A choice of accounts as unique as your business</h1>
+      </div>
+    </body></html>`;
+    const newHtml = `<!DOCTYPE html><html><body>
+      <div id="site-content" role="main">
+        <p>Account Services</p>
+        <h2>A choice of accounts as unique as your business</h2>
+      </div>
+    </body></html>`;
+
+    const [oldExtract, newExtract] = await Promise.all([
+      extractContentModel(oldHtml, "https://example.com/old"),
+      extractContentModel(newHtml, "https://example.com/new"),
+    ]);
+    expect(oldExtract.ok && newExtract.ok).toBe(true);
+    if (!oldExtract.ok || !newExtract.ok) return;
+    expect(diffModels(oldExtract.model, newExtract.model).some((m) => m.kind.startsWith("text_"))).toBe(
+      false,
+    );
   });
 });

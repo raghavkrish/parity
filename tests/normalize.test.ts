@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { diffLayouts, diffModels } from "../src/diff.js";
 import { layoutBoxesEqual, summarizeLayoutBox } from "../src/layout.js";
-import { normalizeHref, normalizeText } from "../src/normalize.js";
+import { flattenTexts, normalizeHref, normalizeText } from "../src/normalize.js";
 import type { ContentModel, LayoutBox } from "../src/types.js";
 
 describe("normalizeText", () => {
   it("collapses whitespace", () => {
     expect(normalizeText("  Hello\n  world\t")).toBe("Hello world");
+  });
+});
+
+describe("flattenTexts", () => {
+  it("joins split heading blocks into one string", () => {
+    expect(
+      flattenTexts([
+        { text: "Account Services" },
+        { text: "A choice of accounts as unique as your business" },
+      ]),
+    ).toBe("Account Services A choice of accounts as unique as your business");
   });
 });
 
@@ -65,6 +76,43 @@ describe("diffModels", () => {
 
   it("returns empty when equal", () => {
     expect(diffModels(base, structuredClone(base))).toEqual([]);
+  });
+
+  it("ignores tag splits when flattened body copy matches", () => {
+    const oldModel: ContentModel = {
+      texts: [{ text: "Account Services A choice of accounts as unique as your business" }],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [
+        { text: "Account Services" },
+        { text: "A choice of accounts as unique as your business" },
+      ],
+      links: [],
+      images: [],
+    };
+    expect(diffModels(oldModel, newModel).filter((m) => m.kind.startsWith("text_"))).toEqual([]);
+  });
+
+  it("still flags a real wording change after flatten", () => {
+    const oldModel: ContentModel = {
+      texts: [{ text: "Earn tiered interest on operating cash with same-day internal transfers." }],
+      links: [],
+      images: [],
+    };
+    const newModel: ContentModel = {
+      texts: [{ text: "Earn boosted interest on operating cash with same-day internal transfers." }],
+      links: [],
+      images: [],
+    };
+    expect(diffModels(oldModel, newModel)).toEqual([
+      expect.objectContaining({
+        kind: "text_changed",
+        oldValue: "Earn tiered interest on operating cash with same-day internal transfers.",
+        newValue: "Earn boosted interest on operating cash with same-day internal transfers.",
+      }),
+    ]);
   });
 });
 
