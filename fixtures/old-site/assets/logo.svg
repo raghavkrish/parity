@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" role="img" aria-label="Northridge mark">
+  <rect width="80" height="80" rx="10" fill="#f7f3ea"/>
+  <path d="M16 58V22h10l14 24 14-24h10v36h-9V38L41 58h-2L25 38v20H16z" fill="#0a1628"/>
+  <circle cx="64" cy="18" r="5" fill="#b08d57"/>
+</svg>

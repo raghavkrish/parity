@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320" role="img" aria-label="Customer service desk">
+  <rect width="640" height="320" fill="#1c2a3d"/>
+  <rect x="40" y="40" width="560" height="240" rx="8" fill="#f3efe6"/>
+  <rect x="70" y="70" width="180" height="120" fill="#0a1628"/>
+  <rect x="280" y="70" width="280" height="18" fill="#b08d57"/>
+  <rect x="280" y="106" width="240" height="12" fill="#cfc6b4"/>
+  <rect x="280" y="132" width="200" height="12" fill="#cfc6b4"/>
+  <circle cx="160" cy="130" r="28" fill="#d9c29a"/>
+  <rect x="70" y="210" width="500" height="40" fill="#e7dfd0"/>
+  <text x="90" y="236" font-family="Georgia, serif" font-size="18" fill="#0a1628">Service desk - classic branch</text>
+</svg>

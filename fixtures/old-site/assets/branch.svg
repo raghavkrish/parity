@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9eb6c9"/>
+      <stop offset="100%" stop-color="#e7eef2"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d9d2c3"/>
+      <stop offset="100%" stop-color="#b7ae9c"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" fill="url(#sky)"/>
+  <rect y="300" width="640" height="120" fill="#6f8f6a"/>
+  <path d="M0 310 C120 280 220 330 340 300 C460 270 540 310 640 290 L640 420 L0 420 Z" fill="#587a54"/>
+  <rect x="150" y="140" width="340" height="190" fill="url(#stone)" stroke="#8c8373" stroke-width="3"/>
+  <rect x="170" y="120" width="300" height="28" fill="#0a1628"/>
+  <polygon points="140,140 320,70 500,140" fill="#0a1628"/>
+  <rect x="210" y="180" width="54" height="70" fill="#7ea0b8"/>
+  <rect x="293" y="180" width="54" height="70" fill="#7ea0b8"/>
+  <rect x="376" y="180" width="54" height="70" fill="#7ea0b8"/>
+  <rect x="290" y="250" width="60" height="80" fill="#3d2c1e"/>
+  <circle cx="520" cy="110" r="28" fill="#f0d58a" opacity="0.9"/>
+  <text x="220" y="138" font-family="Georgia, serif" font-size="16" fill="#b08d57">NORTHRIDGE</text>
+</svg>

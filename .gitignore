@@ -1,0 +1,6 @@
+node_modules/
+dist/
+reports/latest.html
+.DS_Store
+*.log
+.env
